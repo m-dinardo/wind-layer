@@ -296,14 +296,21 @@ export default class BaseLayer {
       });
     }
 
-    const supportsFloatBlend =
-      typeof (this.renderer.gl as any)?.getExtension === 'function' &&
-      Boolean((this.renderer.gl as any).getExtension('EXT_float_blend'));
+    const gl = this.renderer.gl as WebGLRenderingContext | WebGL2RenderingContext;
+    const supportsFloatBlend = typeof (gl as any).getExtension === 'function' && Boolean((gl as any).getExtension('EXT_float_blend'));
+    const particleTarget = {
+      // Use UNORM targets for maximum compatibility (iOS) and consistent blending.
+      type: gl.UNSIGNED_BYTE,
+      internalFormat: gl.RGBA,
+      allowBlend: true,
+      label: 'unorm',
+    };
     if (this.options.renderType === RenderType.particles) {
       // eslint-disable-next-line no-console
       console.info('[wind-gl-core] EXT_float_blend support', supportsFloatBlend);
+      console.info('[wind-gl-core] particle render target', particleTarget.label);
       if (!supportsFloatBlend) {
-        console.warn('[wind-gl-core] EXT_float_blend missing; using UNORM targets for particles and regular blending.');
+        console.warn('[wind-gl-core] EXT_float_blend missing; using non-float targets with standard blending.');
       }
     }
 
@@ -369,6 +376,7 @@ export default class BaseLayer {
         stencilConfigForOverlap: this.stencilConfigForOverlap.bind(this),
         getTileProjSize: this.options.getTileProjSize,
         allowFloatBlend: supportsFloatBlend,
+        targetType: particleTarget,
       });
       this.renderPipeline?.addPass(composePass);
 
@@ -407,8 +415,7 @@ export default class BaseLayer {
         bandType,
         source: this.source,
         prerender: false,
-        // Render targets are UNORM when allowFloatBlend is false, so blending is allowed either way.
-        enableBlend: true,
+        enableBlend: particleTarget.allowBlend,
         particlesPass,
       });
 
