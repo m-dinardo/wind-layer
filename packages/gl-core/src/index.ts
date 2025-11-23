@@ -13,3 +13,7 @@ export { BaseLayer, BaseLayerOptions, UserOptions, TileID, Tile, defaultOptions,
 export * from './source';
 
 export * from './type';
+
+// Build marker for QA to confirm forked gl-core is loaded at runtime (BF-72).
+// eslint-disable-next-line no-console
+console.info('[wind-gl-core] loaded fork build (BF-72 inline fallback)');

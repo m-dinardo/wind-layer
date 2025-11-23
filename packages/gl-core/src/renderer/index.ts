@@ -78,6 +78,10 @@ export interface UserOptions {
 
 export interface BaseLayerOptions extends UserOptions {
   /**
+   * Worker mode: default uses Web Worker; inline runs on main thread (iOS-safe fallback).
+   */
+  workerMode?: 'worker' | 'inline';
+  /**
    * 获取当前视野内的瓦片
    */
   getViewTiles: (data: any, renderType: RenderType) => TileID[];
@@ -161,6 +165,7 @@ export const defaultOptions: BaseLayerOptions = {
   glScale: () => 1,
   zoomScale: () => 1,
   onInit: () => undefined,
+  workerMode: 'worker',
 };
 
 /**
@@ -226,6 +231,19 @@ export default class BaseLayer {
 
     this.#nextStencilID = 1;
 
+    // Toggle inline worker mode (main-thread fetch/decode) when requested.
+    // @ts-ignore
+    if (this.options.workerMode === 'inline' && wgw.setInlineWorkerMode) {
+      // @ts-ignore
+      wgw.setInlineWorkerMode(true);
+      // Log once per layer for clarity in QA.
+      // eslint-disable-next-line no-console
+      console.info('[wind-gl-core] workerMode=inline (main-thread fetch/decode)');
+    } else if (wgw.setInlineWorkerMode) {
+      // @ts-ignore
+      wgw.setInlineWorkerMode(false);
+    }
+
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     this.dispatcher = new wgw.Dispatcher(wgw.getGlobalWorkerPool(), this, this.uid);
@@ -276,6 +294,17 @@ export default class BaseLayer {
       this.#maskPass = new MaskPass('MaskPass', this.renderer, {
         mask: this.options.mask,
       });
+    }
+
+    const supportsFloatBlend =
+      typeof (this.renderer.gl as any)?.getExtension === 'function' &&
+      Boolean((this.renderer.gl as any).getExtension('EXT_float_blend'));
+    if (this.options.renderType === RenderType.particles) {
+      // eslint-disable-next-line no-console
+      console.info('[wind-gl-core] EXT_float_blend support', supportsFloatBlend);
+      if (!supportsFloatBlend) {
+        console.warn('[wind-gl-core] EXT_float_blend missing; using UNORM targets for particles and regular blending.');
+      }
     }
 
     if (this.options.renderType === RenderType.image) {
@@ -339,6 +368,7 @@ export default class BaseLayer {
         renderFrom: this.options.renderFrom ?? RenderFrom.r,
         stencilConfigForOverlap: this.stencilConfigForOverlap.bind(this),
         getTileProjSize: this.options.getTileProjSize,
+        allowFloatBlend: supportsFloatBlend,
       });
       this.renderPipeline?.addPass(composePass);
 
@@ -377,6 +407,7 @@ export default class BaseLayer {
         bandType,
         source: this.source,
         prerender: false,
+        // Render targets are UNORM when allowFloatBlend is false, so blending is allowed either way.
         enableBlend: true,
         particlesPass,
       });

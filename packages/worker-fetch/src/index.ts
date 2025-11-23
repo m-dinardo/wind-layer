@@ -8,6 +8,7 @@ import { getReferrer } from './util';
 import { setWorkerUrl, configDeps, getConfigDeps } from './config';
 import { register } from './webWorkerTransfer';
 import * as utils from './util';
+import { setInlineWorkerMode } from './workerFactory';
 
 let globalWorkerPool;
 
@@ -33,6 +34,7 @@ const exported = {
   getReferrer,
   setWorkerUrl,
   getGlobalWorkerPool,
+  setInlineWorkerMode,
   Actor,
   WorkerPool,
   Dispatcher,

@@ -12,6 +12,10 @@ import { expandTiles, getTileBounds, getTileProjBounds } from './utils/tile';
 
 export interface LayerOptions extends UserOptions {
   renderingMode?: '2d' | '3d';
+  /**
+   * Worker mode for particle pipeline: `worker` (default) or `inline` (main-thread fetch/decode).
+   */
+  workerMode?: 'worker' | 'inline';
 }
 
 export default class Layer {
@@ -35,6 +39,10 @@ export default class Layer {
     this.options = {
       ...(options || {}),
     };
+    if (this.options.workerMode) {
+      // eslint-disable-next-line no-console
+      console.info(`[maplibre-wind] layer init id=${id} workerMode=${this.options.workerMode}`);
+    }
 
     this.source = source;
 
@@ -179,6 +187,9 @@ export default class Layer {
     this.gl = gl;
     this.map = m;
     const canvas = m.getCanvas();
+    if (this.options.workerMode === 'inline') {
+      console.info('[maplibre-wind] worker mode=inline (main-thread fetch/parse)');
+    }
 
     this.renderer = new Renderer(gl, {
       autoClear: false,
@@ -201,6 +212,7 @@ export default class Layer {
         scene: this.scene,
       },
       {
+        workerMode: this.options.workerMode,
         renderType: this.options.renderType,
         renderFrom: this.options.renderFrom,
         styleSpec: this.options.styleSpec,
