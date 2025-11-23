@@ -1,4 +1,5 @@
 import { getWorkerUrl } from './config';
+import InlineWorker from './inlineWorker';
 
 export type MessageListener = (a: { data: any; target: any }) => unknown;
 
@@ -10,6 +11,15 @@ export interface WorkerInterface {
   terminate(): void;
 }
 
+let useInlineWorker = false;
+
+export function setInlineWorkerMode(enabled: boolean) {
+  useInlineWorker = enabled;
+}
+
 export default function workerFactory() {
+  if (useInlineWorker) {
+    return new InlineWorker();
+  }
   return new Worker(getWorkerUrl());
 }

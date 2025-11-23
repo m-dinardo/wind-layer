@@ -167,6 +167,9 @@ export default class Particles extends Pass<ParticlesPassOptions> {
       ...opt,
       name: 'backgroundTexture',
     });
+    // Clear once to avoid residual/uninitialized data causing artifacts.
+    this.#screenTexture.clear();
+    this.#backgroundTexture.clear();
   }
 
   /**

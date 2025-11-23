@@ -16,6 +16,13 @@ export interface ParticlesComposePassOptions {
   renderFrom: RenderFrom;
   stencilConfigForOverlap: (tiles: any[]) => [{ [_: number]: any }, TileID[]];
   getTileProjSize: (z: number, tiles: TileID[]) => [number, number];
+  allowFloatBlend?: boolean;
+  targetType?: {
+    type: number;
+    internalFormat: number;
+    allowBlend: boolean;
+    label?: string;
+  };
 }
 
 const defaultSize = 256;
@@ -30,6 +37,9 @@ export default class ParticlesComposePass extends Pass<ParticlesComposePassOptio
   #current: WithNull<RenderTarget>;
   #next: WithNull<RenderTarget>;
   #uid: string;
+  #loggedDisableBlend = false;
+  #usesFloat: boolean;
+  #targetType: NonNullable<ParticlesComposePassOptions['targetType']>;
 
   #width = defaultSize;
   #height = defaultSize;
@@ -42,6 +52,17 @@ export default class ParticlesComposePass extends Pass<ParticlesComposePassOptio
     super(id, renderer, options);
 
     this.#uid = options.id;
+    this.#targetType =
+      options.targetType ||
+      ({
+        type: this.renderer.gl.FLOAT,
+        internalFormat: this.renderer.isWebGL2
+          ? (this.renderer.gl as WebGL2RenderingContext).RGBA32F
+          : this.renderer.gl.RGBA,
+        allowBlend: options.allowFloatBlend !== false,
+        label: 'float',
+      } as const);
+    this.#usesFloat = this.#targetType.type === this.renderer.gl.FLOAT;
 
     this.#program = new Program(renderer, {
       vertexShader: vert,
@@ -64,12 +85,9 @@ export default class ParticlesComposePass extends Pass<ParticlesComposePassOptio
       height: this.#height,
       minFilter: renderer.gl.NEAREST,
       magFilter: renderer.gl.NEAREST,
-      type: this.renderer.gl.FLOAT,
+      type: this.#targetType.type,
       format: this.renderer.gl.RGBA,
-      // generateMipmaps: false,
-      internalFormat: this.renderer.isWebGL2
-        ? (this.renderer.gl as WebGL2RenderingContext).RGBA32F
-        : this.renderer.gl.RGBA,
+      internalFormat: this.#targetType.internalFormat,
       stencil: true,
     };
 
@@ -156,6 +174,16 @@ export default class ParticlesComposePass extends Pass<ParticlesComposePassOptio
     if (renderTarget) {
       renderTarget.clear();
       renderTarget.bind();
+      if (this.#targetType.allowBlend === false) {
+        this.renderer.state.disable(this.renderer.gl.BLEND);
+        if (!this.#loggedDisableBlend) {
+          // eslint-disable-next-line no-console
+          console.info('[wind-gl-core] particles compose: disabling blend (EXT_float_blend unavailable)', {
+            target: this.#targetType.label,
+          });
+          this.#loggedDisableBlend = true;
+        }
+      }
       const attr = this.renderer.attributes;
       if (attr.depth && renderTarget.depth) {
         this.renderer.state.enable(this.renderer.gl.DEPTH_TEST);

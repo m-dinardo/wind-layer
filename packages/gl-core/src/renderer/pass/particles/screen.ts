@@ -23,10 +23,12 @@ export default class ScreenPass extends Pass<ScreenPassOptions> {
   #program: WithNull<Program>;
   #mesh: WithNull<Mesh>;
   #geometry: WithNull<Geometry>;
+  #loggedBlend: boolean;
 
   constructor(id: string, renderer: Renderer, options: ScreenPassOptions = {} as ScreenPassOptions) {
     super(id, renderer, options);
     this.prerender = Boolean(options.prerender);
+    this.#loggedBlend = false;
 
     this.#program = new Program(renderer, {
       vertexShader: vert,
@@ -95,6 +97,14 @@ export default class ScreenPass extends Pass<ScreenPassOptions> {
     } else {
       const attr = this.renderer.attributes;
       this.renderer.setViewport(this.renderer.width * attr.dpr, this.renderer.height * attr.dpr);
+    }
+    if (!this.options.enableBlend) {
+      this.renderer.state.disable(this.renderer.gl.BLEND);
+      if (!this.#loggedBlend) {
+        // eslint-disable-next-line no-console
+        console.info('[wind-gl-core] particles screen: BLEND disabled (EXT_float_blend unavailable)');
+        this.#loggedBlend = true;
+      }
     }
     if (rendererState && this.#mesh) {
       const camera = rendererParams.cameras.planeCamera;

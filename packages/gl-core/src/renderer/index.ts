@@ -78,6 +78,10 @@ export interface UserOptions {
 
 export interface BaseLayerOptions extends UserOptions {
   /**
+   * Worker mode: default uses Web Worker; inline runs on main thread (iOS-safe fallback).
+   */
+  workerMode?: 'worker' | 'inline';
+  /**
    * 获取当前视野内的瓦片
    */
   getViewTiles: (data: any, renderType: RenderType) => TileID[];
@@ -161,6 +165,7 @@ export const defaultOptions: BaseLayerOptions = {
   glScale: () => 1,
   zoomScale: () => 1,
   onInit: () => undefined,
+  workerMode: 'worker',
 };
 
 /**
@@ -226,6 +231,19 @@ export default class BaseLayer {
 
     this.#nextStencilID = 1;
 
+    // Toggle inline worker mode (main-thread fetch/decode) when requested.
+    // @ts-ignore
+    if (this.options.workerMode === 'inline' && wgw.setInlineWorkerMode) {
+      // @ts-ignore
+      wgw.setInlineWorkerMode(true);
+      // Log once per layer for clarity in QA.
+      // eslint-disable-next-line no-console
+      console.info('[wind-gl-core] workerMode=inline (main-thread fetch/decode)');
+    } else if (wgw.setInlineWorkerMode) {
+      // @ts-ignore
+      wgw.setInlineWorkerMode(false);
+    }
+
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     this.dispatcher = new wgw.Dispatcher(wgw.getGlobalWorkerPool(), this, this.uid);
@@ -276,6 +294,40 @@ export default class BaseLayer {
       this.#maskPass = new MaskPass('MaskPass', this.renderer, {
         mask: this.options.mask,
       });
+    }
+
+    const gl = this.renderer.gl as WebGLRenderingContext | WebGL2RenderingContext;
+    const supportsFloatBlend =
+      typeof (gl as any).getExtension === 'function' && Boolean((gl as any).getExtension('EXT_float_blend'));
+    const halfFloatExt = (gl as any).getExtension?.('EXT_color_buffer_half_float') || (gl as any).getExtension?.('EXT_color_buffer_float');
+    const halfFloatType =
+      this.renderer.isWebGL2 && (gl as WebGL2RenderingContext).HALF_FLOAT
+        ? (gl as WebGL2RenderingContext).HALF_FLOAT
+        : (gl as any).HALF_FLOAT_OES;
+    const particleTarget =
+      halfFloatExt && halfFloatType
+        ? {
+            type: halfFloatType,
+            internalFormat: this.renderer.isWebGL2
+              ? (gl as WebGL2RenderingContext).RGBA16F
+              : gl.RGBA,
+            allowBlend: false, // disable blend when rendering to half-float FBO
+            label: 'half-float',
+          }
+        : {
+            // Fallback: UNORM targets for maximum compatibility.
+            type: gl.UNSIGNED_BYTE,
+            internalFormat: gl.RGBA,
+            allowBlend: true,
+            label: 'unorm',
+          };
+    if (this.options.renderType === RenderType.particles) {
+      // eslint-disable-next-line no-console
+      console.info('[wind-gl-core] EXT_float_blend support', supportsFloatBlend);
+      console.info('[wind-gl-core] particle render target', particleTarget.label);
+      if (!supportsFloatBlend) {
+        console.warn('[wind-gl-core] EXT_float_blend missing; using non-float targets with standard blending.');
+      }
     }
 
     if (this.options.renderType === RenderType.image) {
@@ -339,6 +391,8 @@ export default class BaseLayer {
         renderFrom: this.options.renderFrom ?? RenderFrom.r,
         stencilConfigForOverlap: this.stencilConfigForOverlap.bind(this),
         getTileProjSize: this.options.getTileProjSize,
+        allowFloatBlend: supportsFloatBlend,
+        targetType: particleTarget,
       });
       this.renderPipeline?.addPass(composePass);
 

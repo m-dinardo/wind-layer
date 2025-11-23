@@ -70,9 +70,9 @@
   "homepage": "https://github.com/sakitam-fdd/wind-layer#readme",
   "dependencies": {
     "@sakitam-gis/vis-engine": "^1.5.3",
-    "@sakitam-gis/rbush": "workspace:*",
+    "@sakitam-gis/rbush": "file:../rbush",
     "@mapbox/geojson-rewind": "^0.5.2",
-    "wind-gl-core": "workspace:*",
+    "wind-gl-core": "file:../gl-core",
     "gl-matrix": "^3.4.3"
   },
   "peerDependencies": {
