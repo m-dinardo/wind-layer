@@ -297,14 +297,30 @@ export default class BaseLayer {
     }
 
     const gl = this.renderer.gl as WebGLRenderingContext | WebGL2RenderingContext;
-    const supportsFloatBlend = typeof (gl as any).getExtension === 'function' && Boolean((gl as any).getExtension('EXT_float_blend'));
-    const particleTarget = {
-      // Use UNORM targets for maximum compatibility (iOS) and consistent blending.
-      type: gl.UNSIGNED_BYTE,
-      internalFormat: gl.RGBA,
-      allowBlend: true,
-      label: 'unorm',
-    };
+    const supportsFloatBlend =
+      typeof (gl as any).getExtension === 'function' && Boolean((gl as any).getExtension('EXT_float_blend'));
+    const halfFloatExt = (gl as any).getExtension?.('EXT_color_buffer_half_float') || (gl as any).getExtension?.('EXT_color_buffer_float');
+    const halfFloatType =
+      this.renderer.isWebGL2 && (gl as WebGL2RenderingContext).HALF_FLOAT
+        ? (gl as WebGL2RenderingContext).HALF_FLOAT
+        : (gl as any).HALF_FLOAT_OES;
+    const particleTarget =
+      halfFloatExt && halfFloatType
+        ? {
+            type: halfFloatType,
+            internalFormat: this.renderer.isWebGL2
+              ? (gl as WebGL2RenderingContext).RGBA16F
+              : gl.RGBA,
+            allowBlend: false, // disable blend when rendering to half-float FBO
+            label: 'half-float',
+          }
+        : {
+            // Fallback: UNORM targets for maximum compatibility.
+            type: gl.UNSIGNED_BYTE,
+            internalFormat: gl.RGBA,
+            allowBlend: true,
+            label: 'unorm',
+          };
     if (this.options.renderType === RenderType.particles) {
       // eslint-disable-next-line no-console
       console.info('[wind-gl-core] EXT_float_blend support', supportsFloatBlend);
@@ -415,7 +431,7 @@ export default class BaseLayer {
         bandType,
         source: this.source,
         prerender: false,
-        enableBlend: particleTarget.allowBlend,
+        enableBlend: true,
         particlesPass,
       });
 
