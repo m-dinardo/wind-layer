@@ -11,6 +11,7 @@ uniform vec4 u_bbox;
 uniform vec4 u_data_bbox;
 uniform float u_fade_t;
 uniform vec2 u_image_res;
+uniform bool u_flip_y;
 
 varying vec2 v_particle_pos;
 
@@ -55,13 +56,36 @@ bool containsXY(vec2 pos, vec4 bbox) {
 void main() {
     vec2 pos = v_particle_pos;
 
-    if (!containsXY(pos.xy, u_data_bbox) || !containsXY(pos.xy, u_bbox) || calcTexture(pos).a == 0.0) {
+    // First check if particle is within both data and viewport bounds
+    if (!containsXY(pos.xy, u_data_bbox) || !containsXY(pos.xy, u_bbox)) {
         discard;
     }
 
-    vec2 velocity = bilinear(pos);
+    // Convert world position to UV coordinates for texture sampling
+    vec2 uv = (pos.xy - u_data_bbox.xy) / (u_data_bbox.zw - u_data_bbox.xy);
 
+    // Apply Y-flip if needed (some map coordinate systems have inverted Y)
+    if (u_flip_y) {
+        uv = vec2(uv.x, 1.0 - uv.y);
+    }
+
+    // Check if we have valid data at this position (alpha > threshold)
+    // Use a threshold rather than exact comparison to handle floating point precision
+    vec4 texData = calcTexture(uv);
+    if (texData.a < 0.01) {
+        discard;
+    }
+
+    vec2 velocity = bilinear(uv);
     float value = length(velocity);
+
+    // Discard particles over land/no-data areas.
+    // For RG-encoded velocity data (currents), no-data/land is encoded as PNG value 127
+    // which decodes to approximately 0 m/s for both U and V components.
+    // We discard particles where the velocity magnitude is very small (< 0.02 m/s / ~0.04 knots).
+    if (value < 0.02) {
+        discard;
+    }
 
     float value_t = (value - u_colorRange.x) / (u_colorRange.y - u_colorRange.x);
     vec2 ramp_pos = vec2(value_t, 0.5);

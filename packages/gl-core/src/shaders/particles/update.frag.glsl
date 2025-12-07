@@ -22,6 +22,10 @@ uniform float u_gl_scale;
 
 varying vec2 vUv;
 
+// Flag to control whether particles should be dropped during update.
+// During initialization spreading, we don't want to drop particles.
+bool g_allow_drop = true;
+
 #include <random>
 
 vec4 calcTexture(const vec2 puv) {
@@ -47,7 +51,16 @@ vec2 bilinear(const vec2 uv) {
     return mix(mix(tl, tr, f.x), mix(bl, br, f.x), f.y);
 }
 
-// 根据随机的位置计算在地图视图范围内的位置，我们要根据这些位置从数据纹理取值
+// Map random 0-1 position to the DATA bounds (not viewport bounds).
+// This ensures particles are uniformly distributed across the actual data coverage area,
+// preventing clustering when viewport and data bounds differ.
+vec2 randomPosToDataPos(vec2 pos) {
+    vec2 min_bbox = u_data_bbox.xy;
+    vec2 max_bbox = u_data_bbox.zw;
+    return mix(min_bbox, max_bbox, pos);
+}
+
+// Legacy function kept for compatibility - maps to viewport bounds
 vec2 randomPosToGlobePos(vec2 pos) {
     vec2 min_bbox = u_bbox.xy;
     vec2 max_bbox = u_bbox.zw;
@@ -63,26 +76,43 @@ bool containsXY(vec2 pos, vec4 bbox) {
 }
 
 vec2 update(vec2 pos) {
-    // 1. xy 必定在 bbox 内
+    // Convert particle position to UV coordinates relative to data bounds
     vec2 uv = (pos.xy - u_data_bbox.xy) / (u_data_bbox.zw - u_data_bbox.xy); // 0-1
 
     if (u_flip_y) {
         uv = vec2(uv.x, 1.0 - uv.y);
     }
 
-    vec2 velocity = bilinear(uv);
+    // Only sample velocity if particle is within data bounds.
+    // Particles outside data bounds stay stationary (velocity = 0).
+    vec2 velocity = vec2(0.0);
+    float speed = 0.0;
+    bool inDataBounds = uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0;
 
-    float speed = length(velocity);
+    if (inDataBounds) {
+        velocity = bilinear(uv);
+        speed = length(velocity);
 
-    vec2 v = vec2(velocity.x, -velocity.y);
+        // For RG-encoded velocity data (currents), no-data/land is encoded as PNG value 127
+        // which decodes to approximately 0 m/s for both U and V components.
+        // Particles over land/no-data (speed < 0.02 m/s / ~0.04 knots) stay stationary.
+        // They will be hidden by the draw shader and naturally respawn via drop_rate.
+        if (speed >= 0.02) {
+            vec2 v = vec2(velocity.x, -velocity.y);
 
-    if (u_flip_y) {
-        v = vec2(velocity.x, velocity.y);
+            if (u_flip_y) {
+                v = vec2(velocity.x, velocity.y);
+            }
+
+            vec2 offset = v * 0.0001 * u_speed_factor * u_gl_scale;
+            pos = pos + offset;
+        }
     }
 
-    vec2 offset = v * 0.0001 * u_speed_factor * u_gl_scale;
-
-    pos = pos + offset;
+    // Skip drop logic if dropping is disabled (during initialization spread)
+    if (!g_allow_drop) {
+        return pos;
+    }
 
     // a random seed to use for the particle drop
     vec2 seed = (pos.xy + vUv) * u_rand_seed;
@@ -90,11 +120,19 @@ vec2 update(vec2 pos) {
     float drop_rate = u_drop_rate + speed * u_drop_rate_bump;
     float drop = step(1.0 - drop_rate, rand(seed));
 
+    // Generate random position within VIEWPORT bounds (u_bbox).
+    // This ensures particles respawn uniformly across the entire visible area,
+    // not just the area with loaded data tiles.
     vec2 random_pos = vec2(rand(seed + 1.3), rand(seed + 2.1));
-
     random_pos = randomPosToGlobePos(random_pos);
 
-    if (!containsXY(pos.xy, u_data_bbox) || !containsXY(pos.xy, u_bbox) || calcTexture(uv).a == 0.0) {
+    // Force-drop particles that have moved outside the VIEWPORT bounds.
+    // NOTE: We do NOT force-drop particles over land/no-data areas.
+    // Particles over land are kept stationary (no position update) and hidden by the draw shader.
+    // Force-dropping them would cause clustering because respawned particles that land
+    // on land areas would immediately drop again, creating a feedback loop.
+    // Instead, the natural drop_rate gradually redistributes land particles over time.
+    if (!containsXY(pos.xy, u_bbox)) {
         drop = 1.0;
     }
 
@@ -106,13 +144,23 @@ vec2 update(vec2 pos) {
 void main() {
     vec2 pos = texture2D(u_particles, vUv).xy;
 
-    pos = update(pos);
-    // 初始化时为避免粒子随机位置接近，先执行 25 次迭代
+    // During initialization, map random positions to VIEWPORT bounds (u_bbox).
+    // We use viewport bounds instead of data bounds because:
+    // 1. Data bounds (u_data_bbox) only covers currently loaded tiles
+    // 2. After a pan, not all tiles may be loaded yet
+    // 3. Using viewport bounds ensures particles are distributed across the entire view
+    // 4. Particles in areas without data will be invisible but won't cluster
     if (u_initialize) {
-        pos = randomPosToGlobePos(pos);
-        for (int i = 0; i < 25; i++) {
-            pos = update(pos);
-        }
+        // Convert initial random 0-1 position (scaled by glScale) back to 0-1 range,
+        // then map to viewport bounds for uniform coverage across the visible area.
+        vec2 normalized_pos = pos / u_gl_scale;
+        pos = randomPosToGlobePos(normalized_pos);
+
+        // Don't call update() during initialization - just set the random position.
+        // Calling update() would sample velocity from potentially incomplete data texture,
+        // causing particles to drift toward areas with loaded data.
+    } else {
+        pos = update(pos);
     }
 
     gl_FragColor = vec4(pos.xy, 0.0, 1.0);
