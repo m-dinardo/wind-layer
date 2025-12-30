@@ -19,6 +19,8 @@ uniform float u_speed_factor;
 uniform bool u_initialize;
 uniform bool u_flip_y;
 uniform float u_gl_scale;
+uniform float u_max_age;  // Maximum particle age in frames (0 = use probabilistic drop)
+uniform float u_min_lifespan_percent;  // Respawn age spread: 0-1, particles respawn with age 0 to (this * maxAge)
 
 varying vec2 vUv;
 
@@ -75,7 +77,8 @@ bool containsXY(vec2 pos, vec4 bbox) {
     );
 }
 
-vec2 update(vec2 pos) {
+// Returns vec3(pos.x, pos.y, age)
+vec3 update(vec2 pos, float age) {
     // Convert particle position to UV coordinates relative to data bounds
     vec2 uv = (pos.xy - u_data_bbox.xy) / (u_data_bbox.zw - u_data_bbox.xy); // 0-1
 
@@ -109,16 +112,28 @@ vec2 update(vec2 pos) {
         }
     }
 
+    // Increment age each frame
+    age += 1.0;
+
     // Skip drop logic if dropping is disabled (during initialization spread)
     if (!g_allow_drop) {
-        return pos;
+        return vec3(pos, age);
     }
 
     // a random seed to use for the particle drop
     vec2 seed = (pos.xy + vUv) * u_rand_seed;
 
-    float drop_rate = u_drop_rate + speed * u_drop_rate_bump;
-    float drop = step(1.0 - drop_rate, rand(seed));
+    float drop = 0.0;
+
+    // Use deterministic age-based lifespan if u_max_age > 0
+    if (u_max_age > 0.0) {
+        // Drop particle when it exceeds max age
+        drop = step(u_max_age, age);
+    } else {
+        // Use probabilistic drop rate (original behavior)
+        float drop_rate = u_drop_rate + speed * u_drop_rate_bump;
+        drop = step(1.0 - drop_rate, rand(seed));
+    }
 
     // Generate random position within VIEWPORT bounds (u_bbox).
     // This ensures particles respawn uniformly across the entire visible area,
@@ -136,13 +151,20 @@ vec2 update(vec2 pos) {
         drop = 1.0;
     }
 
+    // Reset age when dropped - random offset staggers respawns to prevent pulsing
+    // u_min_lifespan_percent controls spread (0.5 = 50% of maxAge, balances pulse vs lifespan)
+    float random_age = rand(seed + 3.7) * u_min_lifespan_percent * u_max_age;
+    age = mix(age, random_age, drop);
+
     pos = mix(pos, random_pos, drop);
 
-    return pos;
+    return vec3(pos, age);
 }
 
 void main() {
-    vec2 pos = texture2D(u_particles, vUv).xy;
+    vec4 particle = texture2D(u_particles, vUv);
+    vec2 pos = particle.xy;
+    float age = particle.z;
 
     // During initialization, map random positions to VIEWPORT bounds (u_bbox).
     // We use viewport bounds instead of data bounds because:
@@ -156,12 +178,18 @@ void main() {
         vec2 normalized_pos = pos / u_gl_scale;
         pos = randomPosToGlobePos(normalized_pos);
 
+        // Initialize age to random value so particles don't all die at once
+        vec2 seed = vUv * u_rand_seed;
+        age = rand(seed) * max(u_max_age, 300.0);
+
         // Don't call update() during initialization - just set the random position.
         // Calling update() would sample velocity from potentially incomplete data texture,
         // causing particles to drift toward areas with loaded data.
     } else {
-        pos = update(pos);
+        vec3 result = update(pos, age);
+        pos = result.xy;
+        age = result.z;
     }
 
-    gl_FragColor = vec4(pos.xy, 0.0, 1.0);
+    gl_FragColor = vec4(pos.xy, age, 1.0);
 }

@@ -178,6 +178,8 @@ export default class UpdatePass extends Pass<UpdatePassOptions> {
         'displayRange',
         'u_drop_rate',
         'u_drop_rate_bump',
+        'u_max_age',
+        'u_min_lifespan_percent',
         'u_speed_factor',
         'u_flip_y',
         'u_gl_scale',

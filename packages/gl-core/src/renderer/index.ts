@@ -44,6 +44,8 @@ export interface UserOptions {
     fadeOpacity?: number | any[];
     dropRate?: number | any[];
     dropRateBump?: number | any[];
+    maxAge?: number | any[];  // Fixed lifespan in frames (0 = use probabilistic drop)
+    minLifespanPercent?: number | any[];  // Respawn age spread (0-1): particles respawn with age 0 to (this * maxAge)
 
     /**
      * arrow space
@@ -154,6 +156,8 @@ export const defaultOptions: BaseLayerOptions = {
     fadeOpacity: 0.93,
     dropRate: 0.003,
     dropRateBump: 0.002,
+    maxAge: 0,  // 0 = use probabilistic drop; >0 = fixed lifespan in frames
+    minLifespanPercent: 0.5,  // Respawn age spread: particles respawn with age 0 to (this * maxAge)
     space: 20,
     size: [16, 16],
   },
@@ -194,6 +198,8 @@ export default class BaseLayer {
   #fadeOpacity: number;
   #dropRate: number;
   #dropRateBump: number;
+  #maxAge: number;
+  #minLifespanPercent: number;
   #space: number;
   #size: [number, number];
   #colorRange: Vector2;
@@ -545,6 +551,23 @@ export default class BaseLayer {
   }
 
   /**
+   * Set maximum particle age in frames (fixed lifespan mode)
+   * @param maxAge - 0 = use probabilistic drop; >0 = fixed lifespan in frames
+   */
+  setMaxAge(maxAge: number) {
+    this.#maxAge = maxAge;
+  }
+
+  /**
+   * Set respawn age spread (0-1): particles respawn with age 0 to (this * maxAge)
+   * Higher values spread out deaths to prevent pulsing; lower values ensure longer lifespan.
+   * @param minLifespanPercent - 0 to 1 (default 0.5 = 50% of maxAge)
+   */
+  setMinLifespanPercent(minLifespanPercent: number) {
+    this.#minLifespanPercent = minLifespanPercent;
+  }
+
+  /**
    * 设置 symbol 的间距
    * @param space
    */
@@ -574,6 +597,8 @@ export default class BaseLayer {
         this.setSpeedFactor(createZoom(this.uid, zoom, 'speedFactor', this.options.styleSpec, clear));
         this.setDropRate(createZoom(this.uid, zoom, 'dropRate', this.options.styleSpec, clear));
         this.setDropRateBump(createZoom(this.uid, zoom, 'dropRateBump', this.options.styleSpec, clear));
+        this.setMaxAge(createZoom(this.uid, zoom, 'maxAge', this.options.styleSpec, clear));
+        this.setMinLifespanPercent(createZoom(this.uid, zoom, 'minLifespanPercent', this.options.styleSpec, clear));
       }
 
       if (this.options.renderType === RenderType.arrow) {
@@ -805,6 +830,8 @@ export default class BaseLayer {
           sharedState: this.sharedState,
           u_drop_rate: this.#dropRate,
           u_drop_rate_bump: this.#dropRateBump,
+          u_max_age: this.#maxAge,
+          u_min_lifespan_percent: this.#minLifespanPercent,
           u_speed_factor: this.#speedFactor,
           u_flip_y: this.options.flipY,
           u_gl_scale: this.options.glScale?.(),
@@ -832,6 +859,8 @@ export default class BaseLayer {
         sharedState: this.sharedState,
         u_drop_rate: this.#dropRate,
         u_drop_rate_bump: this.#dropRateBump,
+        u_max_age: this.#maxAge,
+        u_min_lifespan_percent: this.#minLifespanPercent,
         u_speed_factor: this.#speedFactor,
         u_flip_y: this.options.flipY,
         u_gl_scale: this.options.glScale?.(),
