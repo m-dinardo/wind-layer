@@ -25,8 +25,6 @@ uniform bool u_flip_y;
 uniform float u_gl_scale;
 uniform float u_max_age;  // Maximum particle age in frames (0 = use probabilistic drop)
 uniform float u_min_lifespan_percent;  // Respawn age spread: 0-1, particles respawn with age 0 to (this * maxAge)
-uniform float u_force_velocity;  // Phase 5 Exp I: if > 0, override velocity with constant eastward value
-
 in vec2 vUv;
 
 // Flag to control whether particles should be dropped during update.
@@ -100,12 +98,6 @@ vec3 update(vec2 pos, float age) {
     if (inDataBounds) {
         velocity = bilinear(uv);
         speed = length(velocity);
-
-        // Phase 5 Exp I: optionally override velocity with a constant eastward value
-        if (u_force_velocity > 0.0) {
-            velocity = vec2(u_force_velocity, 0.0);
-            speed = u_force_velocity;
-        }
 
         // For RG-encoded velocity data (currents), no-data/land is encoded as PNG value 127
         // which decodes to approximately 0 m/s for both U and V components.

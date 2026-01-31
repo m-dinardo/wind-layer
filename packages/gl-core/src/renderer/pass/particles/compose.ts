@@ -171,24 +171,6 @@ export default class ParticlesComposePass extends Pass<ParticlesComposePassOptio
     rendererState.sharedState.u_data_bbox = [xmin, ymin, xmax, ymax];
     rendererState.sharedState.u_data_zooms = [zmin, zmax];
 
-    // Phase 4 Experiment A: log compose pass state per zoom
-    if (typeof window !== 'undefined' && (window as any).__PARTICLE_DEBUG__) {
-      const roundedZoom = Math.round((rendererState.zoom ?? 0) * 2) / 2;
-      const lastZoom = (this as any).__lastLoggedComposeZoom;
-      if (lastZoom !== roundedZoom) {
-        (this as any).__lastLoggedComposeZoom = roundedZoom;
-        // eslint-disable-next-line no-console
-        console.info('[Phase4-Compose]', {
-          zoom: roundedZoom,
-          tileCount: coordsDescending.length,
-          tileZoomRange: [zmin, zmax],
-          u_data_bbox: [xmin.toFixed(6), ymin.toFixed(6), xmax.toFixed(6), ymax.toFixed(6)],
-          dataBboxSize: [(xmax - xmin).toFixed(6), (ymax - ymin).toFixed(6)],
-          tileGridSize: [w.toFixed(2), h.toFixed(2)],
-        });
-      }
-    }
-
     if (renderTarget) {
       renderTarget.clear();
       renderTarget.bind();
@@ -316,61 +298,6 @@ export default class ParticlesComposePass extends Pass<ParticlesComposePassOptio
       this.renderTexture(this.#next, rendererParams, rendererState, sourceCache);
     }
 
-    // Phase 4: Readback compose FBO to verify velocity data is present at all zoom levels
-    if (typeof window !== 'undefined' && (window as any).__PARTICLE_DEBUG__ && this.#current?.texture) {
-      const zoom = rendererState?.zoom ?? 0;
-      const roundedZoom = Math.round(zoom * 2) / 2;
-      const lastZoom = (this as any).__lastLoggedComposeReadbackZoom;
-      if (lastZoom !== roundedZoom) {
-        (this as any).__lastLoggedComposeReadbackZoom = roundedZoom;
-        const gl = this.renderer.gl as WebGL2RenderingContext;
-        const tex = this.#current.texture;
-        try {
-          const readFbo = gl.createFramebuffer();
-          gl.bindFramebuffer(gl.FRAMEBUFFER, readFbo);
-          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex.handle, 0);
-          if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
-            const w = tex.width || 1;
-            const h = tex.height || 1;
-            // Sample 4 positions across the compose FBO
-            const positions = [
-              [Math.floor(w / 4), Math.floor(h / 4)],
-              [Math.floor(w / 2), Math.floor(h / 2)],
-              [Math.floor(w * 3 / 4), Math.floor(h * 3 / 4)],
-              [Math.floor(w / 2), Math.floor(h / 4)],
-            ];
-            const samples: Record<string, string> = {};
-            let nonZeroCount = 0;
-            // Always use FLOAT for readPixels — works for both RGBA32F and RGBA16F targets.
-            // Using UNSIGNED_BYTE on a half-float FBO silently returns zeros.
-            for (const [sx, sy] of positions) {
-              const px = new Float32Array(4);
-              gl.readPixels(sx, sy, 1, 1, gl.RGBA, gl.FLOAT, px);
-              const vals = Array.from(px);
-              samples[`v[${sx},${sy}]`] = `(${vals[0].toFixed(4)}, ${vals[1].toFixed(4)}, a=${vals[3].toFixed(2)})`;
-              if (Math.abs(vals[0]) > 0.001 || Math.abs(vals[1]) > 0.001) nonZeroCount++;
-            }
-            // eslint-disable-next-line no-console
-            console.info('[Phase4-Compose] FBO readback', {
-              zoom: roundedZoom,
-              fboSize: `${w}x${h}`,
-              targetLabel: this.#targetType.label,
-              nonZeroSamples: `${nonZeroCount}/${positions.length}`,
-              ...samples,
-            });
-          } else {
-            // eslint-disable-next-line no-console
-            console.warn('[Phase4-Compose] FBO readback: framebuffer incomplete');
-          }
-          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-          gl.deleteFramebuffer(readFbo);
-        } catch (e) {
-          // eslint-disable-next-line no-console
-          console.warn('[Phase4-Compose] FBO readback failed:', e);
-        }
-        this.renderer.resetState?.();
-      }
-    }
   }
 
   destroy() {
