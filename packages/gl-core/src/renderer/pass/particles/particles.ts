@@ -66,6 +66,12 @@ export default class Particles extends Pass<ParticlesPassOptions> {
         u_particlesRes: {
           value: 0,
         },
+        u_debug_mode: {
+          value: 0,
+        },
+        u_center: {
+          value: new Vector2(0, 0),
+        },
       },
       defines: [`RENDER_TYPE ${this.options.bandType}`, `LITTLE_ENDIAN ${littleEndian}`],
       includes: shaderLib,
@@ -217,11 +223,28 @@ export default class Particles extends Pass<ParticlesPassOptions> {
 
       const sharedState = rendererState.sharedState;
 
-      this.#mesh.program.setUniform('u_bbox', rendererState.extent);
+      // Phase 4 Experiment B: optionally override bbox with a fixed low-zoom bbox
+      const forceBbox = typeof window !== 'undefined' && (window as any).__PARTICLE_FORCE_BBOX__;
+      this.#mesh.program.setUniform('u_bbox', forceBbox || rendererState.extent);
       this.#mesh.program.setUniform('u_data_bbox', sharedState.u_data_bbox);
 
       this.#mesh.program.setUniform('u_flip_y', rendererState.u_flip_y);
       this.#mesh.program.setUniform('u_gl_scale', rendererState.u_gl_scale);
+
+      // Phase 4 Experiment D/E: draw shader debug modes
+      // 0=normal, 1=bypass both (NDC + no discard), 2=normal proj + no discard, 3=NDC + normal discard
+      // 4=centered projection fix (precision fix for Mali)
+      const debugMode = typeof window !== 'undefined' ? ((window as any).__PARTICLE_DEBUG_MODE__ || 0.0) : 0.0;
+      this.#mesh.program.setUniform('u_debug_mode', debugMode);
+
+      // Compute viewport center for centered projection (mode 4 / future default)
+      const extent = forceBbox || rendererState.extent;
+      if (extent) {
+        this.#mesh.program.setUniform('u_center', new Vector2(
+          (extent[0] + extent[2]) / 2,
+          (extent[1] + extent[3]) / 2,
+        ));
+      }
 
       this.#mesh.updateMatrix();
       this.#mesh.worldMatrixNeedsUpdate = false;
@@ -231,6 +254,34 @@ export default class Particles extends Pass<ParticlesPassOptions> {
         ...rendererParams,
         camera,
       });
+
+      // Phase 4 Experiment A: lightweight diagnostic logging AFTER draw
+      // Placed after mesh.draw() so it doesn't interfere with GL state before the draw call.
+      // No readback, no resetState — just logs uniform values and GL error check.
+      if (typeof window !== 'undefined' && (window as any).__PARTICLE_DEBUG__) {
+        const zoom = rendererState.zoom;
+        const roundedZoom = Math.round(zoom * 2) / 2;
+        const lastZoom = (this as any).__lastLoggedZoom;
+        if (lastZoom !== roundedZoom) {
+          (this as any).__lastLoggedZoom = roundedZoom;
+          const gl = this.renderer.gl as WebGL2RenderingContext;
+          const bbox = forceBbox || rendererState.extent;
+          const dataBbox = sharedState.u_data_bbox;
+          const pTex = particleTextures.currentParticles;
+          const glErr = gl.getError();
+
+          console.info('[Phase4-DrawPass]', {
+            zoom: roundedZoom,
+            u_bbox: bbox ? Array.from(bbox).map((v: number) => v.toFixed(6)) : null,
+            u_data_bbox: dataBbox ? Array.from(dataBbox).map((v: number) => v.toFixed(6)) : null,
+            bboxOverride: !!forceBbox,
+            particlesTex: { width: pTex?.width, height: pTex?.height, handle: pTex?.handle ? 'exists' : 'NULL' },
+            numParticles: this.#privateNumParticles,
+            composeFboSize: sharedState.u_tiles_size ? Array.from(sharedState.u_tiles_size).map((v: number) => Math.round(v)) : null,
+            glError: glErr !== gl.NO_ERROR ? `0x${glErr.toString(16)}` : 'none',
+          });
+        }
+      }
     }
 
     if (!stencil) {

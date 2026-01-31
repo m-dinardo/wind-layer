@@ -1,6 +1,10 @@
+#version 300 es
 #defines
 
 precision highp float;
+precision highp sampler2D;
+
+out highp vec4 fragColor;
 
 uniform sampler2D u_texture;
 uniform sampler2D u_textureNext;
@@ -21,8 +25,9 @@ uniform bool u_flip_y;
 uniform float u_gl_scale;
 uniform float u_max_age;  // Maximum particle age in frames (0 = use probabilistic drop)
 uniform float u_min_lifespan_percent;  // Respawn age spread: 0-1, particles respawn with age 0 to (this * maxAge)
+uniform float u_force_velocity;  // Phase 5 Exp I: if > 0, override velocity with constant eastward value
 
-varying vec2 vUv;
+in vec2 vUv;
 
 // Flag to control whether particles should be dropped during update.
 // During initialization spreading, we don't want to drop particles.
@@ -31,8 +36,8 @@ bool g_allow_drop = true;
 #include <random>
 
 vec4 calcTexture(const vec2 puv) {
-    vec4 color0 = texture2D(u_texture, puv);
-    vec4 color1 = texture2D(u_textureNext, puv);
+    vec4 color0 = texture(u_texture, puv);
+    vec4 color1 = texture(u_textureNext, puv);
 
     return mix(color0, color1, u_fade_t);
 }
@@ -95,6 +100,12 @@ vec3 update(vec2 pos, float age) {
     if (inDataBounds) {
         velocity = bilinear(uv);
         speed = length(velocity);
+
+        // Phase 5 Exp I: optionally override velocity with a constant eastward value
+        if (u_force_velocity > 0.0) {
+            velocity = vec2(u_force_velocity, 0.0);
+            speed = u_force_velocity;
+        }
 
         // For RG-encoded velocity data (currents), no-data/land is encoded as PNG value 127
         // which decodes to approximately 0 m/s for both U and V components.
@@ -162,7 +173,7 @@ vec3 update(vec2 pos, float age) {
 }
 
 void main() {
-    vec4 particle = texture2D(u_particles, vUv);
+    vec4 particle = texture(u_particles, vUv);
     vec2 pos = particle.xy;
     float age = particle.z;
 
@@ -191,5 +202,5 @@ void main() {
         age = result.z;
     }
 
-    gl_FragColor = vec4(pos.xy, age, 1.0);
+    fragColor = vec4(pos.xy, age, 1.0);
 }

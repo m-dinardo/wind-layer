@@ -12,6 +12,7 @@ uniform vec4 u_data_bbox;
 uniform float u_fade_t;
 uniform vec2 u_image_res;
 uniform bool u_flip_y;
+uniform float u_debug_mode;
 
 varying vec2 v_particle_pos;
 
@@ -55,6 +56,24 @@ bool containsXY(vec2 pos, vec4 bbox) {
 
 void main() {
     vec2 pos = v_particle_pos;
+
+    // Debug modes: 0=normal, 1=bypass both, 2=normal proj + skip discards, 3=NDC + normal discards
+    // 4=centered proj + skip discards
+    // Modes 1, 2, and 4: bypass fragment discard logic, output position as color
+    if ((u_debug_mode > 0.5 && u_debug_mode < 2.5) || u_debug_mode > 3.5) {
+        float distance = length(2.0 * gl_PointCoord - 1.0);
+        if (distance > 1.0) {
+            discard;
+        }
+        // Mode 4: tint blue to visually confirm centered projection is active
+        if (u_debug_mode > 3.5) {
+            gl_FragColor = vec4(pos.x, pos.y, 1.0, 1.0);
+        } else {
+            gl_FragColor = vec4(pos.x, pos.y, 0.5, 1.0);
+        }
+        return;
+    }
+    // Mode 3: NDC projection but normal fragment logic (falls through to normal path below)
 
     // First check if particle is within both data and viewport bounds
     if (!containsXY(pos.xy, u_data_bbox) || !containsXY(pos.xy, u_bbox)) {
