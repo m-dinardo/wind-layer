@@ -72,7 +72,7 @@
   "dependencies": {
     "@sakitam-gis/vis-engine": "^1.5.3",
     "earcut": "^2.2.4",
-    "wind-gl-worker": "file:../worker-fetch"
+    "wind-gl-worker": "workspace:*"
   },
   "devDependencies": {
     "@types/earcut": "^2.1.4"
