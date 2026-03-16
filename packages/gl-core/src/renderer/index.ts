@@ -40,6 +40,7 @@ export interface UserOptions {
     'fill-color'?: any[];
     opacity?: number | any[];
     numParticles?: number | any[];
+    particleSize?: number | any[];
     speedFactor?: number | any[];
     fadeOpacity?: number | any[];
     dropRate?: number | any[];
@@ -152,6 +153,7 @@ export const defaultOptions: BaseLayerOptions = {
     ],
     opacity: 1,
     numParticles: 65535,
+    particleSize: 2,
     speedFactor: 1,
     fadeOpacity: 0.93,
     dropRate: 0.003,
@@ -194,6 +196,7 @@ export default class BaseLayer {
 
   #opacity: number;
   #numParticles: number;
+  #particleSize: number;
   #speedFactor: number;
   #fadeOpacity: number;
   #dropRate: number;
@@ -234,6 +237,7 @@ export default class BaseLayer {
     };
 
     this.#opacity = 1;
+    this.#particleSize = 2;
 
     this.#nextStencilID = 1;
 
@@ -518,6 +522,10 @@ export default class BaseLayer {
     this.#numParticles = numParticles;
   }
 
+  setParticleSize(particleSize: number) {
+    this.#particleSize = particleSize;
+  }
+
   /**
    * 设置粒子图层的粒子数量
    * @param speedFactor
@@ -593,6 +601,7 @@ export default class BaseLayer {
       this.setOpacity(createZoom(this.uid, zoom, 'opacity', this.options.styleSpec, clear));
       if (this.options.renderType === RenderType.particles) {
         this.setNumParticles(createZoom(this.uid, zoom, 'numParticles', this.options.styleSpec, clear));
+        this.setParticleSize(createZoom(this.uid, zoom, 'particleSize', this.options.styleSpec, clear));
         this.setFadeOpacity(createZoom(this.uid, zoom, 'fadeOpacity', this.options.styleSpec, clear));
         this.setSpeedFactor(createZoom(this.uid, zoom, 'speedFactor', this.options.styleSpec, clear));
         this.setDropRate(createZoom(this.uid, zoom, 'dropRate', this.options.styleSpec, clear));
@@ -825,6 +834,7 @@ export default class BaseLayer {
           opacity: this.#opacity,
           fadeOpacity: this.#fadeOpacity,
           numParticles: this.#numParticles,
+          particleSize: this.#particleSize,
           colorRange: this.#colorRange,
           colorRampTexture: this.#colorRampTexture,
           sharedState: this.sharedState,
@@ -852,6 +862,7 @@ export default class BaseLayer {
         opacity: this.#opacity,
         fadeOpacity: this.#fadeOpacity,
         numParticles: this.#numParticles,
+        particleSize: this.#particleSize,
         colorRange: this.#colorRange,
         colorRampTexture: this.#colorRampTexture,
         displayRange: this.options.displayRange,

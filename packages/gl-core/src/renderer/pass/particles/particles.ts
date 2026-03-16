@@ -214,6 +214,7 @@ export default class Particles extends Pass<ParticlesPassOptions> {
       this.#mesh.program.setUniform('u_particles', particleTextures.currentParticles);
       this.#mesh.program.setUniform('u_particles_next', particleTextures.nextParticles);
       this.#mesh.program.setUniform('u_particlesRes', this.#privateNumParticles);
+      this.#mesh.program.setUniform('u_particleSize', rendererState.particleSize ?? 2.0);
 
       const sharedState = rendererState.sharedState;
 
