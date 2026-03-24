@@ -63,6 +63,9 @@ export default class Particles extends Pass<ParticlesPassOptions> {
         u_particleSize: {
           value: 2.0,
         },
+        u_particlePixelRatio: {
+          value: 1.0,
+        },
         u_particlesRes: {
           value: 0,
         },
@@ -215,6 +218,7 @@ export default class Particles extends Pass<ParticlesPassOptions> {
       this.#mesh.program.setUniform('u_particles_next', particleTextures.nextParticles);
       this.#mesh.program.setUniform('u_particlesRes', this.#privateNumParticles);
       this.#mesh.program.setUniform('u_particleSize', rendererState.particleSize ?? 2.0);
+      this.#mesh.program.setUniform('u_particlePixelRatio', rendererState.particlePixelRatio ?? 1.0);
 
       const sharedState = rendererState.sharedState;
 

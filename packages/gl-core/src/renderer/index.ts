@@ -111,6 +111,12 @@ export interface BaseLayerOptions extends UserOptions {
    */
   getPixelsToProjUnit: () => [number, number];
 
+  /**
+   * Optional particle point-size scale factor. Use this when particle size
+   * should be interpreted in CSS pixels rather than raw framebuffer pixels.
+   */
+  getParticlePixelRatio?: () => number;
+
   getZoom?: () => number;
   getExtent?: () => number[];
   triggerRepaint?: () => void;
@@ -127,6 +133,7 @@ export const defaultOptions: BaseLayerOptions = {
   getTileProjSize: (z) => [256, 256], // eslint-disable-line
   getPixelsToUnits: () => [1, 1],
   getPixelsToProjUnit: () => [1, 1],
+  getParticlePixelRatio: () => 1,
   renderType: RenderType.colorize,
   renderFrom: RenderFrom.r,
   styleSpec: {
@@ -846,6 +853,7 @@ export default class BaseLayer {
           u_flip_y: this.options.flipY,
           u_gl_scale: this.options.glScale?.(),
           u_zoomScale: this.options.zoomScale?.(),
+          particlePixelRatio: this.options.getParticlePixelRatio?.() ?? 1,
           symbolSize: this.#size,
           symbolSpace: this.#space,
           pixelsToProjUnit: this.options.getPixelsToProjUnit(),
@@ -876,6 +884,7 @@ export default class BaseLayer {
         u_flip_y: this.options.flipY,
         u_gl_scale: this.options.glScale?.(),
         u_zoomScale: this.options.zoomScale?.(),
+        particlePixelRatio: this.options.getParticlePixelRatio?.() ?? 1,
         symbolSize: this.#size,
         symbolSpace: this.#space,
         pixelsToProjUnit: this.options.getPixelsToProjUnit(),

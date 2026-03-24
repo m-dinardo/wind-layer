@@ -16,6 +16,11 @@ export interface LayerOptions extends UserOptions {
    * Worker mode for particle pipeline: `worker` (default) or `inline` (main-thread fetch/decode).
    */
   workerMode?: 'worker' | 'inline';
+  /**
+   * Optional scale factor for particle point size so apps can preserve CSS-pixel
+   * semantics on high-DPR mobile displays without affecting desktop behavior.
+   */
+  getParticlePixelRatio?: () => number;
 }
 
 export default class Layer {
@@ -205,13 +210,7 @@ export default class Layer {
     this.sync = new CameraSync(this.map, 'perspective', this.scene);
     this.planeCamera = new OrthographicCamera(0, 1, 1, 0, 0, 1);
 
-    this.layer = new BaseLayer(
-      this.source,
-      {
-        renderer: this.renderer,
-        scene: this.scene,
-      },
-      {
+    const baseLayerOptions = {
         workerMode: this.options.workerMode,
         renderType: this.options.renderType,
         renderFrom: this.options.renderFrom,
@@ -243,6 +242,7 @@ export default class Layer {
           (this.map as any)?.transform.pixelsPerMeter,
           (this.map as any)?.transform.pixelsPerMeter,
         ],
+        getParticlePixelRatio: this.options.getParticlePixelRatio,
         getViewTiles: (source: SourceType, renderType: RenderType) => {
           let { type } = source;
           // @ts-ignore
@@ -393,7 +393,15 @@ export default class Layer {
 
           return wrapTiles;
         },
+      };
+
+    this.layer = new BaseLayer(
+      this.source,
+      {
+        renderer: this.renderer,
+        scene: this.scene,
       },
+      baseLayerOptions as any,
     );
 
     this.map.on('movestart', this.moveStart);
